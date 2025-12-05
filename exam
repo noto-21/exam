@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+
+import argparse as arse
+import sqlite3 as sqli
+from traceback import format_exc
+from tabulate import tabulate
+from datetime import datetime, date
+from colorama import Back, Fore, init  # Colored output
+from sys import exc_info
+from pathlib import Path
+import os
+
+# OS specific connection string with pathlib
+if os.name == "nt":  # Windows
+    db_dir = Path(Path.home(), "AppData", "Local")
+else:  # Linux
+    db_dir = Path(Path.home(), ".config")
+
+# Construct the full path to the SQLite database file
+DB_FILE = Path(db_dir, "exam.db")
+
+# Initialize colorama
+init(autoreset=True)
+
+
+# ==============================
+#  DATABASE INITIALIZATION
+# ==============================
+def init_db() -> None:
+    with sqli.connect(DB_FILE) as sqliconn:
+        sqlicur = sqliconn.cursor()
+
+        sqlicur.executescript("""
+create table if not exists Semester (
+    semester_id integer primary key autoincrement,
+    year integer not null,
+    term text not null,
+    unique(year, term)
+);
+
+create table if not exists Course (
+    course_id integer primary key autoincrement,
+    code text not null,
+    name text,
+    semester_id integer not null,
+    foreign key (semester_id) references Semester(semester_id)
+);
+
+create table if not exists Exam (
+    exam_id integer primary key autoincrement,
+    course_id integer not null,
+    type text not null check (type in ('Midterm', 'Final')),
+    number integer,
+    date text not null,
+    start text,
+    end text,
+    location text,
+    foreign key (course_id) references Course(course_id)
+);
+
+create view if not exists Overview as
+select
+    s.year as year,
+    s.term as term,
+    c.code as code,
+    c.name as name,
+    e.type as type,
+    e.number as number,
+    e.date as date,
+    e.start as start,
+    e.end as end,
+    e.location as location
+from Exam e
+join Course c on e.course_id = c.course_id
+join Semester s on c.semester_id = s.semester_id;
+""")
+        
+        sqliconn.commit()
+
+
+# ==============================
+#  INSERT EXAMS
+# ==============================
+def insert(year: int, term: str, code: str, name: str,
+           type: str, date_str: str,
+           start_str: str | None = None,
+           end_str: str | None = None,
+           number: int | None = None,
+           location: str | None = None) -> None:
+    """Insert a new exam record with validation and safety checks."""
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+
+        if start_str:
+            datetime.strptime(start_str, "%H:%M")
+        if end_str:
+            datetime.strptime(end_str, "%H:%M")
+
+    except ValueError as e:
+        print(f"❌ {e}")
+        return
+    
+    if type.title() not in ("Midterm", "Final"):
+        print("❌ Exam type must be 'Midterm' or 'Final'.")
+        return
+
+    with sqli.connect(DB_FILE) as sqliconn:
+        sqlicur = sqliconn.cursor()
+
+        try:
+            # Ensure semester exists
+            sqlicur.execute(
+                "insert or ignore into Semester (year, term) values (?, ?)",
+                (year, term)
+            )
+
+            sem_id = sqlicur.execute(
+                "select semester_id from Semester where year=? and term=?",
+                (year, term)
+            ).fetchone()[0]
+
+            # Ensure course exists (reuse if it already does)
+            sqlicur.execute(
+                "select course_id from Course where code=? and semester_id=?",
+                (code, sem_id)
+            )
+            existing = sqlicur.fetchone()
+            if existing:
+                course_id = existing[0]
+            else:
+                sqlicur.execute(
+                    "insert into Course (code, name, semester_id) values (?, ?, ?)",
+                    (code, name, sem_id)
+                )
+                course_id = sqlicur.lastrowid
+
+            # Insert exam
+            sqlicur.execute("""
+insert into Exam (course_id, type, number, date, start, end, location)
+values (?, ?, ?, ?, ?, ?, ?)
+""", (course_id, type, number, date_str, start_str, end_str, location))
+            
+            sqliconn.commit()
+            print(f"✅ Exam added: {code} ({type}) on {date_str}")
+        
+        except sqli.IntegrityError as e:
+            print(f"❌ Database integrity error: {e}")
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+
+
+# ==============================
+#  COUNT DOWN TO NEXT EXAM
+# ==============================
+def countdown(expect: str) -> int:
+    return (
+        datetime.strptime(expect, "%Y-%m-%d") - 
+        datetime.strptime(date.today().isoformat(), "%Y-%m-%d")
+    ).days
+
+
+# ==============================
+#  SHOW EXAMS
+# ==============================
+def fetch(code: str | None = None,
+          year: int | None = None,
+          term: str | None = None,
+          type: str | None = None,
+          upcoming_only: bool = True) -> None:
+    """Fetch and display exams, optionally filtered by year and term."""
+    query = "select code, name, type, date, start, end, location from Overview"
+
+    filters = []
+    params = []
+
+    if code is not None:
+        filters.append("code = ?")
+        params.append(code)
+    if year is not None:
+        filters.append("year = ?")
+        params.append(year)
+    if term is not None:
+        filters.append("term = ?")
+        params.append(term)
+    if type is not None:
+        filters.append("type = ?")
+        params.append(type)
+    
+    if upcoming_only and not year and not term and not type:
+        filters.append("(date > ? or (date = ? and end >= ?))")
+        params.extend([date.today().isoformat(),
+                       date.today().isoformat(),
+                       datetime.now().strftime("%H:%M")])
+
+    if filters:
+        query += " where " + " and ".join(filters)
+
+    query += " order by type desc, date asc, start asc, end asc;"
+
+    # print(query, params)
+
+    with sqli.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        # print(rows)
+
+        return rows
+
+
+# ==============================
+#  PRINT
+# ==============================
+def printout(data: list[list] | list,
+             containsCurrent: bool = False) -> None:
+    if not data:
+        print(f"⚠️ No exams found for that selection."
+              f"  You may have finished all of your upcoming exams!")
+        return
+    
+    countedDays = 0
+    colour = Fore.RESET
+    top = None
+
+    headers = [Back.BLUE + Fore.LIGHTWHITE_EX + x + Fore.RESET + Back.RESET for x in
+               [
+                   "Course",
+                   "Name",
+                   "Type",
+                   "Date",
+                   "Start",
+                   "End",
+                   "Location"
+                ]]
+
+    for i in range(len(data)):
+        if (data[i][3] > date.today().isoformat()
+            or (
+                data[i][3] == date.today().isoformat()
+                and
+                data[i][5] >= datetime.now().strftime("%H:%M")
+            )):
+            containsCurrent = True
+
+            top = data[i]
+
+            countedDays = countdown(top[3])
+
+            if len(data) > 1:
+                if countedDays in range(5, 15):
+                    colour = Fore.LIGHTYELLOW_EX
+
+                    data[i + 1] = [Fore.YELLOW + x + Fore.RESET for x in data[i + 1]]
+                elif countedDays <= 4:
+                    colour = Fore.LIGHTRED_EX
+
+                    data[i + 1] = [Fore.LIGHTYELLOW_EX + x + Fore.RESET for x in data[i + 1]]
+                else:
+                    colour = Fore.LIGHTGREEN_EX
+            
+            data[i] = [colour + x + Fore.RESET for x in data[i]]
+            
+            break
+        else:
+            colour = Fore.GREEN
+
+            data[i] = [colour + x + Fore.RESET for x in data[i]]
+        
+    print(tabulate(data, headers=headers, tablefmt="grid"))
+
+    if data and containsCurrent:
+        print(f"Days until {"next" if len(data) > 1 else "this"} exam: {colour}{countedDays}")
+        
+        print(f"Study {colour}{top[1]}{Fore.RESET} "
+                f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(top[3], "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
+                f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(top[4], "%H:%M").strftime("%I:%M %p")}"
+                f"{Fore.RESET}!")
+    else:
+        print(f"{Fore.LIGHTGREEN_EX}No exams to worry about here!")
+
+
+# ==============================
+#  DELETE EXAMS
+# ==============================
+def remove(code: str, year: int, term: str) -> None:
+    """Delete all exams for a course in a given semester."""
+    with sqli.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            delete from Exam
+            where course_id in (
+                select c.course_id
+                from Course c
+                join Semester s ON c.semester_id = s.semester_id
+                where c.code=? AND s.year=? AND s.term=?
+            );
+        """, (code.upper(), year, term))
+        count = cur.rowcount
+        conn.commit()
+
+        if count:
+            print(f"🗑️  Deleted {count} exam(s) for {code.upper()} ({term} {year}).")
+        else:
+            print(f"⚠️  No exams found for {code.upper()} in {term} {year}.")
+
+
+# ==============================
+#  MAIN CLI INTERFACE
+# ==============================
+def main() -> None:
+    parser = arse.ArgumentParser(description="Exam Scheduler using SQLite3")
+    subparsers = parser.add_subparsers(dest="command")
+    parser.set_defaults(command="show")
+
+    # INSERT
+    insert_parser = subparsers.add_parser("insert", help="Insert a new exam record")
+    insert_parser.add_argument("year", type=int)
+    insert_parser.add_argument("term", help="Term (Fall, Winter, etc.)")
+    insert_parser.add_argument("code", help="Course code (e.g. ECON101)")
+    insert_parser.add_argument("name", help="Course name (quoted if spaced)")
+    insert_parser.add_argument("type", help="Exam type (Midterm/Final)")
+    insert_parser.add_argument("date", help="Exam date (YYYY-MM-DD)")
+    insert_parser.add_argument("location", help="Exam location")
+
+    insert_parser.add_argument("--start", nargs="?", help="Start time (HH:MM)")
+    insert_parser.add_argument("--end", nargs="?", help="End time (HH:MM)")
+    insert_parser.add_argument("--number", type=int, nargs="?", help="Midterm number")
+
+    # SHOW
+    show_parser = subparsers.add_parser("show", help="Show all exams")
+    show_parser.add_argument("--code", type=str, nargs="?")
+    show_parser.add_argument("--year", type=int, nargs="?")
+    show_parser.add_argument("--term", nargs="?")
+    show_parser.add_argument("--type", nargs="?")
+    show_parser.add_argument("--all", action="store_true", help="Show all exams (including past ones)")
+
+    # DELETE
+    delete_parser = subparsers.add_parser("delete", help="Delete exams for a course")
+    delete_parser.add_argument("year", type=int)
+    delete_parser.add_argument("term")
+    delete_parser.add_argument("code")
+
+    args = parser.parse_args()
+
+    init_db()
+
+    # print(args)
+
+    if args.command == "insert":
+        insert(
+            args.year, args.term, args.code, args.name,
+            args.type, args.date, args.start, args.end,
+            args.number, args.location
+        )
+    elif args.command == "delete":
+        remove(
+            args.year,
+            args.term,
+            args.code
+        )
+    elif args.command == "show":
+        printout(
+            fetch(
+                getattr(args, "code", None),
+                getattr(args, "year", None),
+                getattr(args, "term", None),
+                getattr(args, "type", None),
+                upcoming_only=not getattr(args, "all", False)
+            )
+        )
+    else:
+        parser.print_help()
+        
+
+if __name__ == "__main__":
+    try:
+        main()
+
+    except sqli.Error as e:
+        exc_type, exc_obj, exc_tb = exc_info()
+
+        print("SQLite connection error:", e)
+
+        print(f"Error Type: {exc_type.__name__}")
+        print(f"File Name: {exc_tb.tb_frame.f_code.co_filename}")
+        print(f"Line Number: {exc_tb.tb_lineno}")
+
+        print(format_exc())
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = exc_info()
+
+        print("Error:", e)
+
+        print(f"Error Type: {exc_type.__name__}")
+        print(f"File Name: {exc_tb.tb_frame.f_code.co_filename}")
+        print(f"Line Number: {exc_tb.tb_lineno}")
+
+        print(format_exc())
