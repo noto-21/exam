@@ -38,7 +38,7 @@ options:
 
 ### Python Packages
 
-- colorama: Library for colored terminal text output.  Install using `pip install colorama`
-- tabulate: Library for tabular formatted output.  Install using `pip install tabulate`
+- colorama: Library for colored terminal text output.  Install using `pip install colorama`.
+- tabulate: Library for tabular formatted output.  Install using `pip install tabulate`.
 
 <hr>
