@@ -9,6 +9,7 @@ from colorama import Back, Fore, init  # Colored output
 from sys import exc_info
 from pathlib import Path
 import os
+import re
 
 # OS specific connection string with pathlib
 if os.name == "nt":  # Windows
@@ -166,7 +167,7 @@ def fetch(code: str | None = None,
           year: int | None = None,
           term: str | None = None,
           type: str | None = None,
-          upcoming_only: bool = True) -> None:
+          upcomingOnly: bool = True) -> list:
     """Fetch and display exams, optionally filtered by year and term."""
     query = "select code, name, type, date, start, end, location from Overview"
 
@@ -186,7 +187,7 @@ def fetch(code: str | None = None,
         filters.append("type = ?")
         params.append(type)
     
-    if upcoming_only and not year and not term and not type:
+    if upcomingOnly and not year and not term and not type and not code:
         filters.append("(date > ? or (date = ? and end >= ?))")
         params.extend([date.today().isoformat(),
                        date.today().isoformat(),
@@ -210,18 +211,42 @@ def fetch(code: str | None = None,
 
 
 # ==============================
+#  REGEX UTILITY
+# ==============================
+def regexUtil(date: str | None = None,
+              time: str | None = None) -> str:
+    dateRegex = re.compile(r'\d{4}-\d{2}-\d{2}')
+    timeRegex = re.compile(r'(\d)?\d:\d{2}')
+
+    if date:
+        dateR = dateRegex.search(date)
+
+        return dateR.group()
+    
+    if time:
+        timeR = timeRegex.search(time)
+
+        return timeR.group()
+
+
+# ==============================
 #  PRINT
 # ==============================
 def printout(data: list[list] | list,
-             containsCurrent: bool = False) -> None:
+             code: str | None = None,
+             containsCurrent: bool = False) -> bool:
     if not data:
         print(f"⚠️ No exams found for that selection."
               f"  You may have finished all of your upcoming exams!")
-        return
+        return True
     
     countedDays = 0
-    colour = Fore.RESET
+    colour1, colour2 = Fore.RESET, None
+    countColour = None
     top = None
+    oneLiner = None
+
+    dataO = data[:]
 
     headers = [Back.BLUE + Fore.LIGHTWHITE_EX + x + Fore.RESET + Back.RESET for x in
                [
@@ -234,50 +259,87 @@ def printout(data: list[list] | list,
                    "Location"
                 ]]
 
-    for i in range(len(data)):
-        if (data[i][3] > date.today().isoformat()
+    for i in range(len(dataO)):
+        if (dataO[i][3] > date.today().isoformat()
             or (
-                data[i][3] == date.today().isoformat()
+                dataO[i][3] == date.today().isoformat()
                 and
-                data[i][5] >= datetime.now().strftime("%H:%M")
+                dataO[i][5] >= datetime.now().strftime("%H:%M")
             )):
             containsCurrent = True
 
-            top = data[i]
+            top = dataO[i]
 
             countedDays = countdown(top[3])
 
-            if len(data) > 1:
-                if countedDays in range(5, 15):
-                    colour = Fore.LIGHTYELLOW_EX
-
-                    data[i + 1] = [Fore.YELLOW + x + Fore.RESET for x in data[i + 1]]
-                elif countedDays <= 4:
-                    colour = Fore.LIGHTRED_EX
-
-                    data[i + 1] = [Fore.LIGHTYELLOW_EX + x + Fore.RESET for x in data[i + 1]]
-                else:
-                    colour = Fore.LIGHTGREEN_EX
+            if countedDays in range(5, 15):
+                colour1 = Fore.LIGHTYELLOW_EX
+                colour2 = Fore.YELLOW
+            elif countedDays <= 4:
+                colour1 = Fore.LIGHTRED_EX
+                colour2 = Fore.LIGHTYELLOW_EX
+            else:
+                colour1 = Fore.LIGHTGREEN_EX
             
-            data[i] = [colour + x + Fore.RESET for x in data[i]]
+            if len(dataO) > 1 and countedDays in range(15):
+                dataO[i + 1] = [colour2 + x + Fore.RESET for x in dataO[i + 1]]
             
+            dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
+            
+            countColour = colour1
+
             break
         else:
-            colour = Fore.GREEN
+            colour1 = Fore.GREEN
 
-            data[i] = [colour + x + Fore.RESET for x in data[i]]
-        
-    print(tabulate(data, headers=headers, tablefmt="grid"))
+            top = data[0]
 
-    if data and containsCurrent:
-        print(f"Days until {"next" if len(data) > 1 else "this"} exam: {colour}{countedDays}")
+        dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
+
+    """
+        Determines whether the entry with the matching
+        code corresponds to the topmost entry in the
+        results, to determine output coloring for the
+        countdown int.
+    """
+    if code is not None:
+        matchIndex = None
+        for i in range(len(data)):
+            if data[i][0] == code:
+                matchIndex = i
+                break
+
+        if matchIndex is None:
+            return False
+
+        oneLiner = dataO[matchIndex]
+
+        if top[0] == data[matchIndex][0]:
+            countColour = colour1
+        else:
+            countColour = colour2
         
-        print(f"Study {colour}{top[1]}{Fore.RESET} "
-                f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(top[3], "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
-                f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(top[4], "%H:%M").strftime("%I:%M %p")}"
+        dataO.clear()
+        dataO.append(oneLiner)
+
+        top = oneLiner
+
+    print(tabulate(dataO, headers=headers, tablefmt="grid"))
+
+    dateR = regexUtil(date=top[3])
+    timeR = regexUtil(time=top[4])
+
+    if dataO and containsCurrent:
+        print(f"Days until {"next" if len(dataO) > 1 else "this"} exam: {countColour}{countedDays}")
+        
+        print(f"Study {colour1}{top[1]}{Fore.RESET} "
+                f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
+                f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(timeR, "%H:%M").strftime("%I:%M %p")}"
                 f"{Fore.RESET}!")
     else:
         print(f"{Fore.LIGHTGREEN_EX}No exams to worry about here!")
+    
+    return True
 
 
 # ==============================
@@ -360,15 +422,25 @@ def main() -> None:
             args.code
         )
     elif args.command == "show":
-        printout(
-            fetch(
-                getattr(args, "code", None),
-                getattr(args, "year", None),
-                getattr(args, "term", None),
-                getattr(args, "type", None),
-                upcoming_only=not getattr(args, "all", False)
+        if printout(
+            data=fetch(
+                year=getattr(args, "year", None),
+                term=getattr(args, "term", None),
+                type=getattr(args, "type", None),
+                upcomingOnly=not getattr(args, "all", False)
+            ),
+            code=getattr(args, "code", None)
+        ) is False:
+            printout(
+                data=fetch(
+                    code=getattr(args, "code", None),
+                    year=getattr(args, "year", None),
+                    term=getattr(args, "term", None),
+                    type=getattr(args, "type", None),
+                    upcomingOnly=not getattr(args, "all", False)
+                ),
+                code=getattr(args, "code", None)
             )
-        )
     else:
         parser.print_help()
         
