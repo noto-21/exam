@@ -314,14 +314,16 @@ def printout(data: list[list] | list,
 
         oneLiner = dataO[matchIndex]
 
+        print(top[0], data[matchIndex][0], data[matchIndex + 1][0])
+
         if top[0] == data[matchIndex][0]:
             countColour = colour1
-        else:
+        elif data[1][0] == data[matchIndex][0]:
             countColour = colour2
+        else:
+            countColour = Fore.LIGHTGREEN_EX
 
         countedDays = countdown(data[matchIndex][3])
-        if countColour is None:
-            countColour = Fore.LIGHTGREEN_EX
         
         dataO.clear()
         dataO.append(oneLiner)
