@@ -6,7 +6,7 @@
 Exam Scheduler using SQLite3!
 
 ### Shell Command
-Can be placed in `/usr/local/bin` (with root permission) to be used with the shell.  If problems with running occur, try to change execution permission via `sudo chmod +x /usr/local/bin/exam`.
+Can be placed in `/usr/local/bin` (with `sudo`) to be used with the shell.  If problems with running occur, try to change execution permission via `sudo chmod +x /usr/local/bin/exam`.
 
 ## SQLite Database
 The `exam.db` file will be stored in `/home/<username>/.config` on Linux, and `C:\Users\<username>\AppData\Local` on Windows.
