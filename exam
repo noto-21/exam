@@ -430,16 +430,18 @@ def printout(data: list[list] | list,
         else:
             colour1 = Fore.GREEN
 
+            dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
+
             top = data[0]
 
-    # Print table
-    print(tabulate(dataO, headers=headers, tablefmt="grid"))
-
-    # Find date and time of topmost entry
-    dateR = date_time_regex_util(date=top[3])
-    timeR = date_time_regex_util(time=top[4])
-
     if dataO and containsCurrent:
+        # Print table
+        print(tabulate(dataO, headers=headers, tablefmt="grid"))
+        
+        # Find date and time of topmost entry
+        dateR = date_time_regex_util(date=top[3])
+        timeR = date_time_regex_util(time=top[4])
+
         print(f"Days until {"next" if len(dataO) > 1 and not code else "this"} exam: {countColour}{countedDaysTop}")
         
         print(f"Study {colour1}{top[1]}{Fore.RESET} "
