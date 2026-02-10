@@ -419,8 +419,8 @@ def printout(data: list[list] | list,
 
                 colour2 = colour_util(countedDaysSecond, colours[1])
             
-            if len(dataO) > 1 and countedDaysTop in range(15):
-                dataO[i + 1] = [colour2 + x + Fore.RESET for x in dataO[i + 1]]
+                if countedDaysTop in range(15):
+                    dataO[i + 1] = [colour2 + x + Fore.RESET for x in dataO[i + 1]]
             
             dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
             
@@ -431,8 +431,6 @@ def printout(data: list[list] | list,
             colour1 = Fore.GREEN
 
             top = data[0]
-
-        dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
 
     # Print table
     print(tabulate(dataO, headers=headers, tablefmt="grid"))
