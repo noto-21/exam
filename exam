@@ -25,9 +25,96 @@ init(autoreset=True)
 
 
 # ==============================
+#  COUNTDOWN UTILITY
+# ==============================
+def countdown(later_date: str) -> int:
+    """
+    Accepts a date string and counts the number of days until the specified
+    date.
+    
+    :param later_date: Specified date in string form, formatted as '%Y-%m-%d'.
+    :type later_date: str
+    :return: The integer number of days until the given date.
+    :rtype: int
+    """
+    return (
+        datetime.strptime(later_date, "%Y-%m-%d") - 
+        datetime.strptime(date.today().isoformat(), "%Y-%m-%d")
+    ).days
+
+
+# ==============================
+#  DATE REGEX UTILITY
+# ==============================
+def date_time_regex_util(date: str | None = None,
+              time: str | None = None) -> str:
+    """
+    Parses a string, searches for a date (formatted as '%Y-%m-%d') or a time
+    (formatted as '%H:%M'), and returns the grouped results. Specifies the
+    format of the date and time in question, in case of typos or bad data
+    (because SQLite3 stores dates as strings).
+    
+    :param date: The string containing the purported date.
+    :type date: str | None
+    :param time: The string containing the purported time.
+    :type time: str | None
+    :return: The grouped result of the regex search.
+    :rtype: str
+    """
+    dateRegex = re.compile(r'\d{4}-\d{2}-\d{2}')
+    timeRegex = re.compile(r'(\d)?\d:\d{2}')
+
+    if date:
+        dateR = dateRegex.search(date)
+
+        return dateR.group()
+    
+    if time:
+        timeR = timeRegex.search(time)
+
+        return timeR.group()
+
+
+
+# ==============================
+#  COLOURING UTILITY
+# ==============================
+def colour_util(days: int,
+               colours: tuple[
+                   str,
+                   str,
+                   str
+                ]) -> str:
+    """
+    Accepts an int and a tuple of strings, and returns one of the strings
+    based on the value of the int. Intended to be used for dynamic row
+    colouring with colorama.
+    
+    :param days: The number of days until the exam to be coloured.
+    :type days: int
+    :param colours: The tuple of colours to use, containing three potential
+    colours. One is selected based on the exam's position in the result set.
+    :type colours: tuple[str, str, str]
+    :return: The colour that was selected based on the number of days until
+    the exam starts.
+    :rtype: str
+    """
+    if days in range(8, 15):
+        return colours[0]
+    elif days <= 7:
+        return colours[1]
+    else:
+        return colours[2]
+
+
+# ==============================
 #  DATABASE INITIALIZATION
 # ==============================
 def init_db() -> None:
+    """
+    Initializes SQLite3 database in user's home directory.
+    """
+
     with sqli.connect(DB_FILE) as sqliconn:
         sqlicur = sqliconn.cursor()
 
@@ -88,7 +175,35 @@ def insert(year: int, term: str, code: str, name: str,
            end_str: str | None = None,
            number: int | None = None,
            location: str | None = None) -> None:
-    """Insert a new exam record with validation and safety checks."""
+    """
+    Inserts items into the database.
+    
+    :param year: The year of the semester in which the exam occurs.
+    :type year: int
+    :param term: The semester in which the exam occurs. Either 'Fall' or
+    'Winter'.
+    :type term: str
+    :param code: The course code pertaining to the exam.
+    :type code: str
+    :param name: The name of the course the exam is for.
+    :type name: str
+    :param type: The type of exam. Either a 'Midterm' or a 'Final'.
+    :type type: str
+    :param date_str: The date of the exam, formatted as '%Y-%m-%d'.
+    :type date_str: str
+    :param start_str: The start time of the exam, formatted as '%H:%M'.
+    :type start_str: str | None
+    :param end_str: The end time of the exam, formatted as '%H:%M'.
+    :type end_str: str | None
+    :param number: The sequential number of the exam. For cases in which
+    there is more than one midterm, for example.
+    :type number: int | None
+    :param location: The building/room where the exam will be held. Can also
+    store brief notes about the nature of the exam (data type is 'text').
+    :type location: str | None
+    """
+
+    # Insert a new exam record with validation and safety checks.
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
 
@@ -151,16 +266,6 @@ values (?, ?, ?, ?, ?, ?, ?)
 
 
 # ==============================
-#  COUNT DOWN TO NEXT EXAM
-# ==============================
-def countdown(expect: str) -> int:
-    return (
-        datetime.strptime(expect, "%Y-%m-%d") - 
-        datetime.strptime(date.today().isoformat(), "%Y-%m-%d")
-    ).days
-
-
-# ==============================
 #  SHOW EXAMS
 # ==============================
 def fetch(code: str | None = None,
@@ -168,7 +273,27 @@ def fetch(code: str | None = None,
           term: str | None = None,
           type: str | None = None,
           upcomingOnly: bool = True) -> list:
-    """Fetch and display exams, optionally filtered by year and term."""
+    """
+    Queries the database based on either course code, year, term, exam type,
+    or no criteria. Filters either for upcoming exams only or all exams.
+    Returns a list of row results.
+    
+    :param code: The course code pertaining to the exam.
+    :type code: str | None
+    :param year: The year of the semester in which the exam occurs.
+    :type year: int | None
+    :param term: The semester in which the exam occurs. Either 'Fall' or
+    'Winter'.
+    :type term: str | None
+    :param type: The type of exam. Either a 'Midterm' or a 'Final'.
+    :type type: str | None
+    :param upcomingOnly: Filter for future exams only.
+    :type upcomingOnly: bool
+    :return: List of rows fetched.
+    :rtype: list
+    """
+
+    # Fetch and display exams, optionally filtered by year and term.
     query = "select code, name, type, date, start, end, location from Overview"
 
     filters = []
@@ -196,37 +321,18 @@ def fetch(code: str | None = None,
     if filters:
         query += " where " + " and ".join(filters)
 
-    query += " order by type desc, date asc, start asc, end asc;"
+    query += " order by date asc, start asc, end asc;"
 
-    # print(query, params)
+    # print(query, params)  # DEBUG
 
     with sqli.connect(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute(query, params)
         rows = cur.fetchall()
 
-        # print(rows)
+        # print(rows)  # DEBUG
 
         return rows
-
-
-# ==============================
-#  REGEX UTILITY
-# ==============================
-def regexUtil(date: str | None = None,
-              time: str | None = None) -> str:
-    dateRegex = re.compile(r'\d{4}-\d{2}-\d{2}')
-    timeRegex = re.compile(r'(\d)?\d:\d{2}')
-
-    if date:
-        dateR = dateRegex.search(date)
-
-        return dateR.group()
-    
-    if time:
-        timeR = timeRegex.search(time)
-
-        return timeR.group()
 
 
 # ==============================
@@ -235,20 +341,49 @@ def regexUtil(date: str | None = None,
 def printout(data: list[list] | list,
              code: str | None = None,
              containsCurrent: bool = False) -> bool:
+    """
+    Accepts a list, applies formatting row-by-row, and prints to the
+    screen.
+    
+    :param data: The list to be parsed.
+    :type data: list[list] | list
+    :param code: The course code, for output filtering.
+    :type code: str | None
+    :param containsCurrent: Does the list of data contain an exam that happens
+    either now or later?
+    :type containsCurrent: bool
+    :return: True if successful, False otherwise.
+    :rtype: bool
+    """
     if not data:
         print(f"⚠️ No exams found for that selection."
               f"  You may have finished all of your upcoming exams!")
         return True
     
-    countedDays = 0
-    colour1, colour2 = Fore.RESET, None
+    colours = [
+        (Fore.LIGHTYELLOW_EX, Fore.LIGHTRED_EX, Fore.LIGHTGREEN_EX),
+        (Fore.YELLOW, Fore.LIGHTYELLOW_EX, Fore.RESET)
+    ]
+    
+    countedDaysTop = 0  # Countdown to next exam
+    colour1, colour2 = Fore.RESET, None  # Output colours
     countColour = None
-    top = None
-    oneLiner = None
+    top = None  # Topmost entry in result set
 
-    dataO = data[:]
+    """
+    Output data initally matches all input data, unless a code is
+    specified by the user.
+    """
+    dataO = data[:] \
+        if not code else [x for x in data if x[0] == code]
 
-    headers = [Back.BLUE + Fore.LIGHTWHITE_EX + x + Fore.RESET + Back.RESET for x in
+    # Header list formatting
+    headers = [Back.BLUE +
+               Fore.LIGHTWHITE_EX +
+               x +
+               Fore.RESET +
+               Back.RESET
+               for x in
                [
                    "Course",
                    "Name",
@@ -259,6 +394,7 @@ def printout(data: list[list] | list,
                    "Location"
                 ]]
 
+    # Only highlight exams that are now or later
     for i in range(len(dataO)):
         if (dataO[i][3] > date.today().isoformat()
             or (
@@ -268,20 +404,22 @@ def printout(data: list[list] | list,
             )):
             containsCurrent = True
 
+            # Format the top row
             top = dataO[i]
 
-            countedDays = countdown(top[3])
+            countedDaysTop = countdown(top[3])
 
-            if countedDays in range(5, 15):
-                colour1 = Fore.LIGHTYELLOW_EX
-                colour2 = Fore.YELLOW
-            elif countedDays <= 4:
-                colour1 = Fore.LIGHTRED_EX
-                colour2 = Fore.LIGHTYELLOW_EX
-            else:
-                colour1 = Fore.LIGHTGREEN_EX
+            colour1 = colour_util(countedDaysTop, colours[0])
             
-            if len(dataO) > 1 and countedDays in range(15):
+            # Format the second row, if exists
+            if len(dataO) > 1:
+                second = dataO[i + 1]
+
+                countedDaysSecond = countdown(second[3])
+
+                colour2 = colour_util(countedDaysSecond, colours[1])
+            
+            if len(dataO) > 1 and countedDaysTop in range(15):
                 dataO[i + 1] = [colour2 + x + Fore.RESET for x in dataO[i + 1]]
             
             dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
@@ -296,47 +434,15 @@ def printout(data: list[list] | list,
 
         dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
 
-    """
-        Determines whether the entry with the matching
-        code corresponds to the topmost entry in the
-        results, to determine output coloring for the
-        countdown int.
-    """
-    if code is not None:
-        matchIndex = None
-        for i in range(len(data)):
-            if data[i][0] == code:
-                matchIndex = i
-                break
-
-        if matchIndex is None:
-            return False
-
-        oneLiner = dataO[matchIndex]
-
-        print(top[0], data[matchIndex][0], data[matchIndex + 1][0])
-
-        if top[0] == data[matchIndex][0]:
-            countColour = colour1
-        elif data[1][0] == data[matchIndex][0]:
-            countColour = colour2
-        else:
-            countColour = Fore.LIGHTGREEN_EX
-
-        countedDays = countdown(data[matchIndex][3])
-        
-        dataO.clear()
-        dataO.append(oneLiner)
-
-        top = oneLiner
-
+    # Print table
     print(tabulate(dataO, headers=headers, tablefmt="grid"))
 
-    dateR = regexUtil(date=top[3])
-    timeR = regexUtil(time=top[4])
+    # Find date and time of topmost entry
+    dateR = date_time_regex_util(date=top[3])
+    timeR = date_time_regex_util(time=top[4])
 
     if dataO and containsCurrent:
-        print(f"Days until {"next" if len(dataO) > 1 else "this"} exam: {countColour}{countedDays}")
+        print(f"Days until {"next" if len(dataO) > 1 and not code else "this"} exam: {countColour}{countedDaysTop}")
         
         print(f"Study {colour1}{top[1]}{Fore.RESET} "
                 f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
@@ -352,7 +458,19 @@ def printout(data: list[list] | list,
 #  DELETE EXAMS
 # ==============================
 def remove(code: str, year: int, term: str) -> None:
-    """Delete all exams for a course in a given semester."""
+    """
+    Deletes an exam from the database.
+    
+    :param code: The course code pertaining to the exam.
+    :type code: str | None
+    :param year: The year of the semester in which the exam occurs.
+    :type year: int | None
+    :param term: The semester in which the exam occurs. Either 'Fall' or
+    'Winter'.
+    :type term: str | None
+    """
+
+    # Delete all exams for a course in a given semester.
     with sqli.connect(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -376,7 +494,16 @@ def remove(code: str, year: int, term: str) -> None:
 # ==============================
 #  MAIN CLI INTERFACE
 # ==============================
-def main() -> None:
+def main() -> int:
+    """
+    Entry point for the scheduler CLI.
+    
+    Parses command-line arguments, initializes the database,
+    executes the requested command, and returns an exit code.
+    
+    :return: Exit code.
+    :rtype: int
+    """
     parser = arse.ArgumentParser(description="Exam Scheduler using SQLite3")
     subparsers = parser.add_subparsers(dest="command")
     parser.set_defaults(command="show")
@@ -413,7 +540,7 @@ def main() -> None:
 
     init_db()
 
-    # print(args)
+    # print(args)  # DEBUG
 
     if args.command == "insert":
         insert(
@@ -449,11 +576,14 @@ def main() -> None:
             )
     else:
         parser.print_help()
+    
+    return 0  # Return code
         
 
 if __name__ == "__main__":
     try:
-        main()
+        # Exit with success
+        raise SystemExit(main())
 
     except sqli.Error as e:
         exc_type, exc_obj, exc_tb = exc_info()
@@ -466,6 +596,9 @@ if __name__ == "__main__":
 
         print(format_exc())
 
+        # Exit with fail
+        raise SystemExit(1)
+
     except Exception as e:
         exc_type, exc_obj, exc_tb = exc_info()
 
@@ -476,3 +609,6 @@ if __name__ == "__main__":
         print(f"Line Number: {exc_tb.tb_lineno}")
 
         print(format_exc())
+
+        # Exit with fail
+        raise SystemExit(1)
