@@ -27,20 +27,29 @@ init(autoreset=True)
 # ==============================
 #  COUNTDOWN UTILITY
 # ==============================
-def countdown(later_date: str) -> int:
+def countdown(later_date: str) -> list[int]:
     """
-    Accepts a date string and counts the number of days until the specified
-    date.
+    Accepts a date string and counts the number of days, hours, and minutes
+    until the specified date.
     
     :param later_date: Specified date in string form, formatted as '%Y-%m-%d'.
     :type later_date: str
-    :return: The integer number of days until the given date.
-    :rtype: int
+    :return: The days, hours, and minutes until the given date.
+    :rtype: list[int]
     """
-    return (
-        datetime.strptime(later_date, "%Y-%m-%d") - 
-        datetime.strptime(date.today().isoformat(), "%Y-%m-%d")
-    ).days
+
+    target = datetime.strptime(later_date, "%Y-%m-%d")
+    now = datetime.now()
+
+    diff = target - now
+
+    total_seconds = int(diff.total_seconds())
+
+    days = total_seconds // 86400
+    hours = (total_seconds % 86400) // 3600
+    minutes = (total_seconds % 3600) // 60
+
+    return [days, hours, minutes]
 
 
 # ==============================
@@ -407,7 +416,7 @@ def printout(data: list[list] | list,
             # Format the top row
             top = dataO[i]
 
-            countedDaysTop = countdown(top[3])
+            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3])
 
             colour1 = colour_util(countedDaysTop, colours[0])
             
@@ -415,7 +424,7 @@ def printout(data: list[list] | list,
             if len(dataO) > 1:
                 second = dataO[i + 1]
 
-                countedDaysSecond = countdown(second[3])
+                countedDaysSecond, _, _ = countdown(second[3])
 
                 colour2 = colour_util(countedDaysSecond, colours[1])
             
@@ -442,7 +451,11 @@ def printout(data: list[list] | list,
         dateR = date_time_regex_util(date=top[3])
         timeR = date_time_regex_util(time=top[4])
 
-        print(f"Days until {"next" if len(dataO) > 1 and not code else "this"} exam: {countColour}{countedDaysTop}")
+        print(f"Time until "
+              f"{'next' if len(dataO) > 1 and not code else 'this'} "
+              f"exam: {countColour}{countedDaysTop} day{'s' if countedDaysTop != 1 else ''}, "
+              f"{countedHoursTop} hour{'s' if countedHoursTop != 1 else ''}, "
+              f"{countedMinutesTop} minute{'s' if countedMinutesTop != 1 else ''}")
         
         print(f"Study {colour1}{top[1]}{Fore.RESET} "
                 f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
