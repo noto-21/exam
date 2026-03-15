@@ -37,7 +37,7 @@ options:
 </div>
 
 ### Python Packages
-Please run `pip install -r requirements.txt` to install all necessary packages, or feel free to install each library individually:
+If you want to use a virtual environment, please run `pip install -r requirements.txt` to install all necessary packages, or feel free to install each library individually:
 
 - colorama: Library for colored terminal text output.  Install using `pip install colorama`.
 - tabulate: Library for tabular formatted output.  Install using `pip install tabulate`.
