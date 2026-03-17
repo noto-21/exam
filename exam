@@ -421,7 +421,7 @@ def printout(data: list[list] | list,
             colour1 = colour_util(countedDaysTop, colours[0])
             
             # Format the second row, if exists
-            if len(dataO) > 1:
+            if i + 1 < len(dataO):
                 second = dataO[i + 1]
 
                 countedDaysSecond, _, _ = countdown(second[3])
@@ -441,7 +441,7 @@ def printout(data: list[list] | list,
 
             dataO[i] = [colour1 + x + Fore.RESET for x in dataO[i]]
 
-            top = data[0]
+            top = dataO[0]
 
     if dataO and containsCurrent:
         # Print table
