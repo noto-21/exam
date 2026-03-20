@@ -465,10 +465,10 @@ def printout(data: list[list] | list,
 
         in_progress = start_dt <= now <= end_dt
 
-        if in_progress:
+        if in_progress:  # Count toward the end of the current exam
             countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[5])
             label = "exam is complete"
-        else:
+        else:  # Count toward the start of the next exam
             countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[4])
             label = f"{'next' if len(dataO) > 1 and not code else 'this'} exam"
 
