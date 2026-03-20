@@ -27,22 +27,24 @@ init(autoreset=True)
 # ==============================
 #  COUNTDOWN UTILITY
 # ==============================
-def countdown(later_date: str) -> list[int]:
+def countdown(later_date: str, later_time: str) -> list[int]:
     """
-    Accepts a date string and counts the number of days, hours, and minutes
-    until the specified date.
+    Accepts a date string and a time string,
+    and counts the number of days, hours, and
+    minutes until the specified date.
     
-    :param later_date: Specified date in string form, formatted as '%Y-%m-%d'.
+    :param later_date: Specified date in string form,
+    formatted as '%Y-%m-%d'.
     :type later_date: str
     :return: The days, hours, and minutes until the given date.
     :rtype: list[int]
     """
 
-    target = datetime.strptime(later_date, "%Y-%m-%d")
+    target = datetime.strptime(f"{later_date} {later_time}",
+                               "%Y-%m-%d %H:%M")
     now = datetime.now()
 
     diff = target - now
-
     total_seconds = int(diff.total_seconds())
 
     days = total_seconds // 86400
@@ -374,7 +376,7 @@ def printout(data: list[list] | list,
         (Fore.YELLOW, Fore.LIGHTYELLOW_EX, Fore.RESET)
     ]
     
-    countedDaysTop = 0  # Countdown to next exam
+    countedDaysTop, countedHoursTop, countedMinutesTop = 0, 0, 0
     colour1, colour2 = Fore.RESET, None  # Output colours
     countColour = None
     top = None  # Topmost entry in result set
@@ -410,21 +412,27 @@ def printout(data: list[list] | list,
                 dataO[i][3] == date.today().isoformat()
                 and
                 dataO[i][5] >= datetime.now().strftime("%H:%M")
-            )):
+                )):
             containsCurrent = True
 
             # Format the top row
             top = dataO[i]
 
-            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3])
+            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(
+                                                                    top[3],
+                                                                    top[5]
+                                                                )
 
             colour1 = colour_util(countedDaysTop, colours[0])
-            
+
             # Format the second row, if exists
             if i + 1 < len(dataO):
                 second = dataO[i + 1]
 
-                countedDaysSecond, _, _ = countdown(second[3])
+                countedDaysSecond, _, _ = countdown(
+                                            second[3],
+                                            second[5]
+                                        )
 
                 colour2 = colour_util(countedDaysSecond, colours[1])
             
@@ -451,16 +459,31 @@ def printout(data: list[list] | list,
         dateR = date_time_regex_util(date=top[3])
         timeR = date_time_regex_util(time=top[4])
 
-        print(f"Time until "
-              f"{'next' if len(dataO) > 1 and not code else 'this'} "
-              f"exam: {countColour}{countedDaysTop} day{'s' if countedDaysTop != 1 else ''}, "
-              f"{countedHoursTop} hour{'s' if countedHoursTop != 1 else ''}, "
-              f"{countedMinutesTop} minute{'s' if countedMinutesTop != 1 else ''}")
-        
-        print(f"Study {colour1}{top[1]}{Fore.RESET} "
-                f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
-                f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(timeR, "%H:%M").strftime("%I:%M %p")}"
-                f"{Fore.RESET}!")
+        start_dt = datetime.strptime(f"{top[3]} {top[4]}", "%Y-%m-%d %H:%M")
+        end_dt = datetime.strptime(f"{top[3]} {top[5]}", "%Y-%m-%d %H:%M")
+        now = datetime.now()
+
+        in_progress = start_dt <= now <= end_dt
+
+        if in_progress:
+            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[5])
+            label = "exam is complete"
+        else:
+            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[4])
+            label = f"{'next' if len(dataO) > 1 and not code else 'this'} exam"
+
+        print(
+            f"Time until {label}: "
+            f"{countColour}{countedDaysTop} day{'s' if countedDaysTop != 1 else ''}, "
+            f"{countedHoursTop} hour{'s' if countedHoursTop != 1 else ''}, "
+            f"{countedMinutesTop} minute{'s' if countedMinutesTop != 1 else ''}"
+        )
+        print(
+            f"Study {colour1}{top[1]}{Fore.RESET} "
+            f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
+            f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(timeR, "%H:%M").strftime("%I:%M %p")}"
+            f"{Fore.RESET}!"
+        )
     else:
         print(f"{Fore.LIGHTGREEN_EX}No exams to worry about here!")
     
