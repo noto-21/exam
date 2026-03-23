@@ -216,12 +216,14 @@ def insert(year: int, term: str, code: str, name: str,
 
     # Insert a new exam record with validation and safety checks.
     try:
-        datetime.strptime(date_str, "%Y-%m-%d")
+        # Normalize date to YYYY-MM-DD
+        date_str = datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
 
+        # Normalize times to HH:MM (ensures leading zeros)
         if start_str:
-            datetime.strptime(start_str, "%H:%M")
+            start_str = datetime.strptime(start_str, "%H:%M").strftime("%H:%M")
         if end_str:
-            datetime.strptime(end_str, "%H:%M")
+            end_str = datetime.strptime(end_str, "%H:%M").strftime("%H:%M")
 
     except ValueError as e:
         print(f"❌ {e}")
@@ -230,6 +232,8 @@ def insert(year: int, term: str, code: str, name: str,
     if type.title() not in ("Midterm", "Final"):
         print("❌ Exam type must be 'Midterm' or 'Final'.")
         return
+
+    code = code.upper()
 
     with sqli.connect(DB_FILE) as sqliconn:
         sqlicur = sqliconn.cursor()
@@ -249,7 +253,7 @@ def insert(year: int, term: str, code: str, name: str,
             # Ensure course exists (reuse if it already does)
             sqlicur.execute(
                 "select course_id from Course where code=? and semester_id=?",
-                (code, sem_id)
+                (code.upper(), sem_id)
             )
             existing = sqlicur.fetchone()
             if existing:
@@ -257,7 +261,7 @@ def insert(year: int, term: str, code: str, name: str,
             else:
                 sqlicur.execute(
                     "insert into Course (code, name, semester_id) values (?, ?, ?)",
-                    (code, name, sem_id)
+                    (code.upper(), name, sem_id)
                 )
                 course_id = sqlicur.lastrowid
 
@@ -350,8 +354,7 @@ def fetch(code: str | None = None,
 #  PRINT
 # ==============================
 def printout(data: list[list] | list,
-             code: str | None = None,
-             containsCurrent: bool = False) -> bool:
+             code: str | None = None) -> bool:
     """
     Accepts a list, applies formatting row-by-row, and prints to the
     screen.
@@ -367,14 +370,15 @@ def printout(data: list[list] | list,
     :rtype: bool
     """
     if not data:
-        print(f"⚠️ No exams found for that selection."
-              f"  You may have finished all of your upcoming exams!")
+        print(f"⚠️ No exams found for that selection.")
         return True
     
     colours = [
         (Fore.LIGHTYELLOW_EX, Fore.LIGHTRED_EX, Fore.LIGHTGREEN_EX),
         (Fore.YELLOW, Fore.LIGHTYELLOW_EX, Fore.RESET)
     ]
+
+    containsCurrent = False
     
     countedDaysTop, countedHoursTop, countedMinutesTop = 0, 0, 0
     colour1, colour2 = Fore.RESET, None  # Output colours
@@ -407,14 +411,15 @@ def printout(data: list[list] | list,
 
     # Only highlight exams that are now or later
     for i in range(len(dataO)):
-        if (dataO[i][3] > date.today().isoformat()
-            or (
-                dataO[i][3] == date.today().isoformat()
-                and
-                dataO[i][5] >= datetime.now().strftime("%H:%M")
-                )):
-            containsCurrent = True
+        exam_date = dataO[i][3]
+        exam_end = dataO[i][5]
 
+        is_future = (exam_date > date.today().isoformat() or 
+                    (exam_date == date.today().isoformat() and 
+                     exam_end >= datetime.now().strftime("%H:%M")))
+
+        if is_future and not containsCurrent:
+            containsCurrent = True
             # Format the top row
             top = dataO[i]
 
@@ -451,41 +456,54 @@ def printout(data: list[list] | list,
 
             top = dataO[0]
 
-    if dataO and containsCurrent:
+    if dataO:
         # Print table
         print(tabulate(dataO, headers=headers, tablefmt="grid"))
-        
-        # Find date and time of topmost entry
-        dateR = date_time_regex_util(date=top[3])
-        timeR = date_time_regex_util(time=top[4])
 
-        start_dt = datetime.strptime(f"{top[3]} {top[4]}", "%Y-%m-%d %H:%M")
-        end_dt = datetime.strptime(f"{top[3]} {top[5]}", "%Y-%m-%d %H:%M")
-        now = datetime.now()
+        if containsCurrent:
+            # Find date and time of topmost entry
+            dateR = date_time_regex_util(date=top[3])
+            timeR = date_time_regex_util(time=top[4])
 
-        in_progress = start_dt <= now <= end_dt
+            start_dt = datetime.strptime(f"{top[3]} {top[4]}", "%Y-%m-%d %H:%M")
+            end_dt = datetime.strptime(f"{top[3]} {top[5]}", "%Y-%m-%d %H:%M")
+            now = datetime.now()
 
-        if in_progress:  # Count toward the end of the current exam
-            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[5])
-            label = "exam is complete"
-        else:  # Count toward the start of the next exam
-            countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[4])
-            label = f"{'next' if len(dataO) > 1 and not code else 'this'} exam"
+            in_progress = start_dt <= now <= end_dt
 
-        print(
-            f"Time until {label}: "
-            f"{countColour}{countedDaysTop} day{'s' if countedDaysTop != 1 else ''}, "
-            f"{countedHoursTop} hour{'s' if countedHoursTop != 1 else ''}, "
-            f"{countedMinutesTop} minute{'s' if countedMinutesTop != 1 else ''}"
-        )
-        print(
-            f"Study {colour1}{top[1]}{Fore.RESET} "
-            f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
-            f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(timeR, "%H:%M").strftime("%I:%M %p")}"
-            f"{Fore.RESET}!"
-        )
-    else:
-        print(f"{Fore.LIGHTGREEN_EX}No exams to worry about here!")
+            if in_progress:  # Count toward the end of the current exam
+                countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[5])
+                label = "exam is complete"
+            else:  # Count toward the start of the next exam
+                countedDaysTop, countedHoursTop, countedMinutesTop = countdown(top[3], top[4])
+                label = f"{'next' if len(dataO) > 1 and not code else 'this'} exam"
+
+            parts = [f"Time until {label}:", "\b" f"{countColour}"]
+
+            if countedDaysTop > 0:
+                suffix = 's' if countedDaysTop > 1 else ''
+                parts.append(f"{countedDaysTop} day{suffix},")
+            
+            if countedHoursTop > 0:
+                suffix = 's' if countedHoursTop > 1 else ''
+                parts.append(f"{countedHoursTop} hour{suffix},")
+
+            if countedMinutesTop > 0:
+                suffix = 's' if countedMinutesTop > 1 else ''
+                parts.append(f"{countedMinutesTop} minute{suffix},")
+            else:
+                parts.append(f"<1 minute")
+
+            print(" ".join(parts))
+
+            print(
+                f"Study {colour1}{top[1]}{Fore.RESET} "
+                f"before {Fore.LIGHTMAGENTA_EX}{datetime.strptime(dateR, "%Y-%m-%d").strftime("%b %d, %Y")}{Fore.RESET} "
+                f"at {Fore.LIGHTCYAN_EX}{datetime.strptime(timeR, "%H:%M").strftime("%I:%M %p")}"
+                f"{Fore.RESET}!"
+            )
+        else:
+            print(f"{Fore.LIGHTGREEN_EX}No exams to worry about here!")
     
     return True
 
@@ -580,15 +598,15 @@ def main() -> int:
 
     if args.command == "insert":
         insert(
-            args.year, args.term, args.code, args.name,
-            args.type, args.date, args.start, args.end,
-            args.number, args.location
+            year=args.year, term=args.term, code=args.code, name=args.name,
+            type=args.type, date=args.date, start=args.start, end=args.end,
+            number=args.number, location=args.location
         )
     elif args.command == "delete":
         remove(
-            args.year,
-            args.term,
-            args.code
+            year=args.year,
+            term=args.term,
+            code=args.code
         )
     elif args.command == "show":
         if printout(
