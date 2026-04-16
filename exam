@@ -490,7 +490,7 @@ def printout(data: list[list] | list,
 
             if countedMinutesTop > 0:
                 suffix = 's' if countedMinutesTop > 1 else ''
-                parts.append(f"{countedMinutesTop} minute{suffix},")
+                parts.append(f"{countedMinutesTop} minute{suffix}")
             else:
                 parts.append(f"<1 minute")
 
