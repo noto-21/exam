@@ -599,7 +599,7 @@ def main() -> int:
     if args.command == "insert":
         insert(
             year=args.year, term=args.term, code=args.code, name=args.name,
-            type=args.type, date=args.date, start=args.start, end=args.end,
+            type=args.type, date_str=args.date, start_str=args.start, end_str=args.end,
             number=args.number, location=args.location
         )
     elif args.command == "delete":
